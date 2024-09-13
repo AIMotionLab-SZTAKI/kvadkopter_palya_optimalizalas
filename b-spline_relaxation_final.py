@@ -7,6 +7,7 @@ import numpy as np
 import bspline.splinelab as splinelab
 import matplotlib.animation as animation
 import matplotlib.patches as patches
+import random 
 
 # functions to fulfill my demands 
 def zerocheck(a):
@@ -129,19 +130,17 @@ class Circle (Obstacle):
     '''
     Class for the circular obstacles. 
     '''
-    def __init__ (self,x,y,r,vel=0.5,knumber=12):
+    def __init__ (self,x,y,r,vel=0.5):
         self.nv =1                  # number of vertices -> in this case the center point
         self.v =np.array([x,y])     # the vertice's coordinate
         self.r = r                  # radius
         self.vel = vel              # velocity
-        self.coeffs_a = opti.variable(knumber,2)
-        self.coeffs_b = opti.variable(knumber)
 
 class Rectangle (Obstacle):    
     '''
     Rectangular obstacles.
     '''
-    def __init__(self,x,y,w,h,vel=0.5,knumber=12):
+    def __init__(self,x,y,w,h,vel,knumber):
         self.nv = 4                 # number of vertices
         self.v = np.array([[x-w/2,y-h/2],[x-w/2,y+h/2],[x+w/2,y+h/2],[x+w/2,y-h/2]])    # the coordinates of the vertices
         self.r = 0                  # radius
@@ -151,7 +150,7 @@ class Rectangle (Obstacle):
         self.vel = vel              # velocity
         self.coeffs_a = opti.variable(knumber,2)    # hyperplane's coefficients
         self.coeffs_b = opti.variable(knumber)      # hyperplane's offset
-
+ 
 def openfig(): 
     '''
     Making an animation plot scene with the correct boundaries. 
@@ -164,32 +163,9 @@ def openfig():
     ax.axis('equal')
     return fig, ax
 
-def fitspline(x, y):
-    plt.plot(x, y, 'k+')
-
-    # Fitting splines
-    dx = np.insert(np.diff(x), 0, 0.0)
-    dy = np.insert(np.diff(y), 0, 0.0)
-    t = np.cumsum(np.sqrt(dx ** 2 + dy ** 2))
-    tckx, tcky = scint.splrep(t, x, s=0), scint.splrep(t, y, s=0)
-    tt = np.linspace(0.0, t[-1], 120)
-    plt.plot(scint.BSpline(*tckx)(tt), sc.BSpline(*tcky)(tt), 'ro-')
-
-    # Normalizing: the new spline is parameterized by the arc length
-    t = np.linspace(0.0, t[-1], 201)
-    x, y = scint.BSpline(*tckx)(t), scint.BSpline(*tcky)(t)
-    dx = np.insert(np.diff(x), 0, 0.0)
-    dy = np.insert(np.diff(y), 0, 0.0)
-    t = np.cumsum(np.sqrt(dx ** 2 + dy ** 2))
-    t, x, y = t[::10], x[::10], y[::10]
-    tckx, tcky = sc.splrep(t, x, s=0), scint.splrep(t, y, s=0)
-    spx, spy = scint.BSpline(*tckx), scint.BSpline(*tcky)
-    tt = np.linspace(0.0, t[-1], 120)
-    plt.plot(spx(tt), spy(tt), 'b*-')
-    return spx, spy
-
 def animate_scene(mobs): # plotting the obstacles for the animation
     fig, vx = openfig()
+    vx.set_title("Trajectory animation")
     mobs_art = []
     for i in range(0, len(mobs)): # plotting the mobs
         if mobs[i].nv == 4:
@@ -212,13 +188,33 @@ def animate_scene(mobs): # plotting the obstacles for the animation
     vx.add_patch(s_dist)
     vx.add_patch(drone)
 
+    '''
+    #separating hyperplane
+    for i in range(len(mobs)):
+        nvector = amx.T@sol.value(mobs[i].coeffs_a)
+    
+    oset =  scint.BSpline(knots_h,sol.value(mobs[0].coeffs_b),k_h)
+    print("Az offset:")
+    test= linspace(0,1,100)
+    print(oset(test))
+    x = np.linspace(q_start[0]-3,q_end[0]+3,100)
+    nspline_x = scint.BSpline(knots_h,sol.value(mobs[0].coeffs_a[:,0]),k_h)
+    nspline_y = scint.BSpline(knots_h,sol.value(mobs[0].coeffs_a[:,1]),k_h)
+    h_plane, =  vx.plot([],[],color='r',marker='o',linewidth=1)
+
+    '''
     def update_data(frame): 
         '''
         Function, which will update the animation in each frame
         '''    
+        #path
         line.set_data([ani_x[:frame]],[ani_y[:frame]])
+
+        #drone
         drone.set_center(xy=(bsp_x(frame/ani_t),ani_y[frame]))
         s_dist.set_center(xy=(ani_x[frame],ani_y[frame]))
+
+        # obstacles
         for i in range(len(mobs)):
             if mobs[i].nv==4:
                 moved =[move[i][0]/ani_t*frame*tf+mobs[i].point[0],move[i][1]/ani_t*frame*tf+mobs[i].point[1]]
@@ -226,7 +222,11 @@ def animate_scene(mobs): # plotting the obstacles for the animation
             else:
                 moved =[move[i][0]/ani_t*frame*tf+mobs[i].v[0],move[i][1]/ani_t*frame*tf+mobs[i].v[1]]
                 mobs_art[i].set_center(moved)
-        
+        '''
+        # hyperplane -> inclomplete
+        h_plane.set_data([ani_x[frame]+nspline_x(frame/ani_t)*(safety+r_veh)],[ani_y[frame]+nspline_y(frame/ani_t)*(safety+r_veh)])
+        print(nspline_x(frame/ani_t)*oset(frame/ani_t))
+        '''
     anim = animation.FuncAnimation(    
                         fig = fig,
                         func=update_data,
@@ -235,39 +235,33 @@ def animate_scene(mobs): # plotting the obstacles for the animation
                         )
     #anim.save("optimization_2D.gif","ffmpeg",60,150) 
     plt.show()
-    
-def obst_path(): # the obstacle's path 
-    p =0
-    
-    
-    return p
+
 
 # -------- points: starting point and goal --------
 q_start = [0,0]         # starting point in [m]
 q_end = [3,3]           # goal in [m]
-bounds = [[-4,4],[-4,4]]
-r_veh = 0.1             # radius of the drone [m]
-safety = 3e-1           # safety distance between the obtsacle and the drone
+bounds = [[-1,5],[-1,5]]
+r_veh = 0.2           # radius of the drone [m]
+safety = 1e-1       # safety distance between the obtsacle and the drone
 
 # -------- B-spline allocation --------
 nknots = 10
-
 k = 3   # degree of the spline
 knots_0 = np.linspace(0,1,nknots)
 knots = splinelab.augknt(knots_0,k) # knots 
 nb = nknots + k-1                     # number of basis functions
 
 # -------- Matrixes for the b-splines ------
-div=40 + 1                    # number of the points where we calculate the b-splines -> minimal time gridding
+div=30+ 1                    # number of the points where we calculate the b-splines -> minimal time gridding
 c = np.linspace(0,1,div)
 dmx = bscol(knots, k, c)
 base,base_2 = DerivCollMx(knots,k,c)
 
 # -------- B-spline allocation for the hyperplane --------
-nknots_h = 10
-k_h = 2   # degree of the spline
+nknots_h = 12
+k_h = 2                                    # degree of the spline
 knots_0_h = np.linspace(0,1,nknots_h)
-knots_h = splinelab.augknt(knots_0_h,k_h) # knots 
+knots_h = splinelab.augknt(knots_0_h,k_h)   # knots 
 nb_h = nknots_h + k_h-1                     # number of basis functions
 amx = bscol(knots_h, k_h, c)
 
@@ -275,16 +269,50 @@ amx = bscol(knots_h, k_h, c)
 opti = Opti()
 
 # -------- initialization of the obstacles -------
-mob = Rectangle(1.5,1.2,1,0.5,0.5,nb_h) # declare the obstacle
-
 mobs = []           # mobs and move should be the same length 
 move = []
 
+'''
+mob = Circle(3,3,0.2,0.2) # declare the obstacle
 mobs.append(mob)
-move.append([mob.vel,mob.vel])            # the motion of the obstacles
-print(move[0]*2)
-#mob2 = Rectangle(2.3,0,0.2,4)
-#mobs.append(mob2)
+move.append([0,mob.vel])
+'''
+'''
+for i in range(30):
+    r = random.uniform(0, 3)
+    xpo = random.uniform(bounds[0][0], bounds[0][1])
+    ypo = random.uniform(bounds[1][0], bounds[1][1])
+    mob = Circle(xpo,ypo,0.2,r) 
+    mobs.append(mob)
+    pr= random.uniform(-1,1)
+    pv= random.uniform(-1,1)
+    move.append([mob.vel*pr,mob.vel*pv])
+  '''
+
+
+
+
+'''
+mob = Rectangle(0,-1.2,2,0.2,0,nb_h) 
+mobs.append(mob)
+move.append([0,0])
+
+mob = Rectangle(-1,0,0.2,2,0,nb_h) 
+mobs.append(mob)
+move.append([0,0])
+
+'''
+
+for i in range(12):
+    r = random.uniform(0, 3)
+    xpo = random.uniform(bounds[0][0], bounds[0][1])
+    ypo = random.uniform(bounds[1][0], bounds[1][1])
+    mob = Rectangle(xpo,ypo,0.2,0.2,r,nb_h)
+    mobs.append(mob)
+    pr= random.uniform(-1,1)
+    pv= random.uniform(-1,1)
+    move.append([mob.vel*pr,mob.vel*pv])
+  
 
 # ------- decision variables ------
 Coeffs = opti.variable(nb,2)        # coefficients -> number of basis functions are given
@@ -295,8 +323,8 @@ opti.minimize(T)
 
 # ------- kinematic constrains --------
 # position
-#opti.subject_to(opti.bounded(bounds[0][0]+r_veh+safety,Coeffs[:,0],bounds[0][1]-r_veh-safety))      # bounding where it should stay -> boundaries of the map
-#opti.subject_to(opti.bounded(bounds[1][0]+r_veh+safety,Coeffs[:,1],bounds[1][1]-r_veh-safety))    
+opti.subject_to(opti.bounded(bounds[0][0]+r_veh,Coeffs[:,0],bounds[0][1]-r_veh))      # bounding where it should stay -> boundaries of the map
+opti.subject_to(opti.bounded(bounds[1][0]+r_veh,Coeffs[:,1],bounds[1][1]-r_veh))    
 
 # limiting coefficients
 opti.subject_to(Coeffs[0,0]==q_start[0])                        # first and last coeffs should be the starting point and the end point
@@ -312,7 +340,6 @@ acc_min = 50
 
 # limitations
 '''
-   
 for i in range(1,nb): # limiting velocity components
     opti.subject_to(opti.bounded(-vel_min*T,(Coeffs[i,1]-Coeffs[i-1,1])*k/zerocheck(knots[i+k]-knots[i]),vel_max*T))
     opti.subject_to(opti.bounded(-vel_min*T,(Coeffs[i,0]-Coeffs[i-1,0])*k/zerocheck(knots[i+k]-knots[i]),vel_max*T))
@@ -341,70 +368,57 @@ opti.subject_to((Coeffs[1,1]-Coeffs[0,1])*k/zerocheck(knots[1+k]-knots[1])==0)
 opti.subject_to((Coeffs[-1,0]-Coeffs[-2,0])*k/zerocheck(knots[nb+k]-knots[nb])==0)
 opti.subject_to((Coeffs[-1,1]-Coeffs[-2,1])*k/zerocheck(knots[nb+k]-knots[nb])==0)
 
-'''
-opti.subject_to(d_der.T[-1,:]@Coeffs[:,0]==0)
-opti.subject_to(d_der.T[0,:]@Coeffs[:,0]==0)
-opti.subject_to(d_der.T[0,:]@Coeffs[:,1]==0)
-opti.subject_to(d_der.T[-1,:]@Coeffs[:,1]==0)
-'''
 # 0 acceleration from the starting position and at the destination   
 opti.subject_to((((Coeffs[2,0]-Coeffs[1,0])*k/zerocheck(knots[2+k]-knots[2]))-((Coeffs[1,0]-Coeffs[0,0])*k/zerocheck(knots[2+k-1]-knots[1])))*(k-1)/zerocheck(knots[2+k-1]-knots[2]) == 0)
 opti.subject_to((((Coeffs[2,1]-Coeffs[1,1])*k/zerocheck(knots[2+k]-knots[2]))-((Coeffs[1,1]-Coeffs[0,1])*k/zerocheck(knots[2+k-1]-knots[1])))*(k-1)/zerocheck(knots[2+k-1]-knots[2]) == 0)
 opti.subject_to((((Coeffs[-1,0]-Coeffs[-2,0])*k/zerocheck(knots[nb+k]-knots[nb]))-((Coeffs[-2,0]-Coeffs[-3,0])*k/zerocheck(knots[nb+k-1]-knots[nb-1])))*(k-1)/zerocheck(knots[nb+k-1]-knots[nb-1]) == 0)
 opti.subject_to((((Coeffs[-1,1]-Coeffs[-2,1])*k/zerocheck(knots[nb+k]-knots[nb]))-((Coeffs[-2,1]-Coeffs[-3,1])*k/zerocheck(knots[nb+k-1]-knots[nb-1])))*(k-1)/zerocheck(knots[nb+k-1]-knots[nb-1]) == 0)
 
-'''
-opti.subject_to(d_der2.T[0,:]@Coeffs[:,0]==0)
-opti.subject_to(d_der2.T[-1,:]@Coeffs[:,0]==0)
-opti.subject_to(d_der2.T[0,:]@Coeffs[:,1]==0)
-opti.subject_to(d_der2.T[-1,:]@Coeffs[:,1]==0)
-'''
 # ------- obstacle avoidance --------
 for l in range(len(mobs)):
     for p in range(div):                              # separating hyperplane theorem
         if mobs[l].nv==4:    
             for i in range(mobs[l].nv):
-                opti.subject_to(amx.T[p,:]@mobs[l].coeffs_a@(mobs[l].v[i]+move[l]@(p*T)/div)-amx.T[p,:]@mobs[l].coeffs_b>=safety)
+                opti.subject_to(amx.T[p,:]@mobs[l].coeffs_a@(mobs[l].v[i]+move[l]@(p*T/div))-amx.T[p,:]@mobs[l].coeffs_b>=safety)
             opti.subject_to((amx.T[p,:]@mobs[l].coeffs_a)@(dmx.T[p,:]@Coeffs[:,:]).T-amx.T[p,:]@mobs[l].coeffs_b<=-r_veh)
         
-        
-        elif mob.nv == 1:
+        elif mobs[l].nv == 1:
             opti.subject_to((dmx.T[p,:]@Coeffs[:,0]-(mobs[l].v[0]+move[l][0]*p*T/div))**2+(dmx.T[p,:]@Coeffs[:,1]-(mobs[l].v[1]+move[l][1]*p*T/div))**2>=(mobs[l].r+r_veh+safety)**2)
             
-    opti.subject_to(amx.T[p,:]@mobs[l].coeffs_a[:,0]**2+amx.T[p,:]@mobs[l].coeffs_a[:,1]**2<=1)             # normalizing the n vector
+    if mobs[l].nv==4:
+        for p in range(div):     
+            if mobs[l].nv==4:    
+                opti.subject_to(amx.T[p,:]@mobs[l].coeffs_a[:,0]**2+amx.T[p,:]@mobs[l].coeffs_a[:,1]**2==1)             # normalizing the n vector
     
-
-
 # ------- time constraint --------
-opti.subject_to(T>0)            # T should be bigger than 0
+opti.subject_to(T>0)            
 
 # ------- initial values for solver -------        
-# # can help where to search for the solution -> putting the coeffs on a line
-opti.set_initial(T,3)
-if len(mobs) <=1:
-    priority =0
-    dx_lin = (q_end[0]-q_start[0])/(nb+priority)
-    dy_lin = (q_end[1]-q_start[1])/(nb+priority)
-    for i in range(nb):
-        opti.set_initial(Coeffs[i,0],i*dx_lin)
-        opti.set_initial(Coeffs[i,1],i*dy_lin)
+opti.set_initial(T,(sqrt((q_end[0]-q_start[0])**2+(q_end[1]-q_start[1])**2)/vel_max)+vel_max/acc_max)
 
+#  putting the coeffs on a line
+priority =0                         # piority can be changed to get trajectories from counter clockwise or anticlockwise
+dx_lin = (q_end[0]-q_start[0])/(nb+priority)
+dy_lin = (q_end[1]-q_start[1])/(nb+priority)
+for i in range(nb):
+    opti.set_initial(Coeffs[i,0],i*dx_lin)
+    opti.set_initial(Coeffs[i,1],i*dy_lin)
 
 # -------- solving the problem -------
 p_opts = {"expand": True}
 s_opts = {"max_iter": 5000}
 opti.solver("ipopt",p_opts,s_opts)
 sol = opti.solve()
-tf = sol.value(T)
-print("Az ossz ido:")
-print(tf)
-
 
 # -------- extracting the solution --------
+tf = sol.value(T)
 coeffs_x = sol.value(Coeffs[:,0])
 coeffs_y = sol.value(Coeffs[:,1])
+print("Final time:")
+print(tf)
 
-# -------- extracting the coefficient's derivatives --------
+# -------- Calculating the coefficients of the derivatives --------
+# 1. derivative
 Q_x = np.zeros(len(coeffs_x)-1)
 Q_y = np.zeros(len(coeffs_y)-1)
 
@@ -413,6 +427,7 @@ for i in range(1,len(coeffs_x)):
 for i in range(2,len(coeffs_y)):
     Q_y[i-1]=sol.value((Coeffs[i,1]-Coeffs[i-1,1])*k/zerocheck(knots[i+k]-knots[i]))/tf
 
+# 2. derivative
 Q_x2 = np.zeros(len(coeffs_x)-2)
 Q_y2 = np.zeros(len(coeffs_y)-2)
 
@@ -429,65 +444,66 @@ xx = np.linspace(0,1,1001)
 # -------- x spline --------
 bsp_x = scint.BSpline(knots, coeffs_x,k)
 bx[0].plot(bsp_x(xx),xx )
-bx[0].set_title('Az X komponens')
-bx[0].set_ylabel('S paraméter [-]', loc='center')
-bx[0].set_xlabel('Az X értéke [m]', loc='center')
+bx[0].set_title('The X component')
+bx[0].set_ylabel('S parameter [-]', loc='center')
+bx[0].set_xlabel('Value of X [m]', loc='center')
 
 # -------- y spline --------
 bsp_y = scint.BSpline(knots, coeffs_y,k)
 bx[1].plot(xx,bsp_y(xx))
-bx[1].set_title('Az Y komponens')
-bx[1].set_xlabel('S paraméter [-]', loc='center')
-bx[1].set_ylabel('Az Y értéke [m]', loc='center')
+bx[1].set_title('The Y component')
+bx[1].set_xlabel('S parameter [-]', loc='center')
+bx[1].set_ylabel('Value of Y [m]', loc='center')
 
 # -------- plotting the path --------
 fig, cx = plt.subplots()
 cx.axis('equal')
 cx.plot(bsp_x(xx),bsp_y(xx),'--k',lw = '1.5')  
-cx.set_title('A kettő együtt')
-cx.set_xlabel('X értéke [m]', loc='center')
-cx.set_ylabel('Y értéke [m]', loc='center')
+cx.set_title('The trajectory')
+cx.set_xlabel('Value of X [m]', loc='center')
+cx.set_ylabel('Value of Y [m]', loc='center')
 cx.plot(q_start[0],q_start[1],'xr', ms ="10")
 cx.plot(q_end[0],q_end[1],'xr', ms ="10")  
 
-if mob.nv == 4:
-            rajz = patches.Rectangle(mob.point, mob.w,mob.h, facecolor='r')
-            cx.add_patch(rajz)
-elif mob.nv ==1:
-            rajz = patches.Circle(mob.v, mob.r, facecolor='r')
-            cx.add_patch(rajz)
+for l in range(len(mobs)):
+    if mobs[l].nv == 4:
+                rajz = patches.Rectangle(mobs[l].point, mobs[l].w,mobs[l].h, facecolor='r')
+                cx.add_patch(rajz)
+    elif mobs[l].nv ==1:
+                rajz = patches.Circle(mobs[l].v, mobs[l].r, facecolor='r')
+                cx.add_patch(rajz)
 
 # derivatives
 fig, dx = plt.subplots(1,2,figsize=(12, 4))
 # x component
 dx[0].plot(c*tf,base@Q_x,"y",lw="2")
-dx[0].set_title('Az X komponens sebessége')
-dx[0].set_xlabel('Az idő [s]', loc='center')
-dx[0].set_ylabel('A sebesség [m/s]', loc='center')   
+dx[0].set_title('Velocity of the X component')
+dx[0].set_xlabel('Time [s]', loc='center')
+dx[0].set_ylabel('Velocity [m/s]', loc='center')   
 bsp_deriv = scint.splder(bsp_x,1)
 
 # y component
 dx[1].plot(c*tf,base@Q_y,"y",lw="2")
-dx[1].set_title('Az Y komponens sebessége')
-dx[1].set_xlabel('Az idő [s]', loc='center')
-dx[1].set_ylabel('A sebesség [m/s]', loc='center')   
+dx[1].set_title('Velocity of the Y component')
+dx[1].set_xlabel('Time [s]', loc='center')
+dx[1].set_ylabel('Velocity [m/s]', loc='center')  
 
 # -------- acceleration --------
 # x component
 fig,lx= plt.subplots(1,2,figsize=(12, 4))
 
 lx[0].plot(c*tf,base_2@Q_x2)
-lx[0].set_title('Az X gyorsulása')
-lx[0].set_xlabel('Az idő [s]', loc='center')
-lx[0].set_ylabel('Az Y értéke [m]', loc='center')
+lx[0].set_title('Acceleration of X')
+lx[0].set_xlabel('Time [s]', loc='center')
+lx[0].set_ylabel('Acceleration of X [m/s^2]', loc='center')
 bsp_deriv2 = scint.splder(bsp_x,2)
 lx[0].plot(c*tf,bsp_deriv2(c)/tf**2)
 
 # y components
 lx[1].plot(c*tf,base_2@Q_y2)
-lx[1].set_title('Az Y gyorsulása')
-lx[1].set_xlabel('Az idő [s]', loc='center')
-lx[1].set_ylabel('Az Y értéke [m]', loc='center')
+lx[1].set_title('Acceleration of Y')
+lx[1].set_xlabel('Time [s]', loc='center')
+lx[1].set_ylabel('Acceleration of Y [m/s^2]', loc='center')
 
 bx[0].grid(color='k', linestyle=':', linewidth=0.5)
 bx[1].grid(color='k', linestyle=':', linewidth=0.5)
@@ -496,5 +512,6 @@ dx[0].grid(color='k', linestyle=':', linewidth=0.5)
 dx[1].grid(color='k', linestyle=':', linewidth=0.5)
 lx[0].grid(color='k', linestyle=':', linewidth=0.5)
 lx[1].grid(color='k', linestyle=':', linewidth=0.5)
+
 animate_scene(mobs)
 
